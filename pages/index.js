@@ -29,36 +29,53 @@ export default function Home(){
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [interim, setInterim] = useState("");           // 音声の途中経過表示
+  const [interim, setInterim] = useState("");
   const [listening, setListening] = useState(false);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
-  const [ttsRate, setTtsRate] = useState(1.4);          // 既定を少し速め
-  const [autoSendDelay, setAutoSendDelay] = useState(3);// 無音→自動送信 秒
+  const [ttsMode, setTtsMode] = useState("off"); // off | browser | cloud
+  const [ttsRate, setTtsRate] = useState(1.4);
+  const [ttsProvider, setTtsProvider] = useState("openai");
+  const [autoSendDelay, setAutoSendDelay] = useState(3);
   const [bargeInEnabled, setBargeInEnabled] = useState(true);
 
   const bottomRef = useRef(null);
   const recRef = useRef(null);
   const silenceTimerRef = useRef(null);
+  const audioRef = useRef(null);
 
   useEffect(()=>{
     bottomRef.current?.scrollIntoView({ behavior:"smooth" });
-    if(ttsEnabled){
-      const last = messages.at(-1);
-      if(last?.role === "assistant" && typeof window !== "undefined"){
-        const utt = new SpeechSynthesisUtterance(last.text);
-        utt.lang = "ja-JP";
-        utt.rate = ttsRate;     // 速度を反映
-        if(bargeInEnabled){
-          // 認識開始時にAI読み上げを止められるようにする
-          utt.onstart = () => { /* no-op */ };
-        }
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utt);
-      }
-    }
-  }, [messages, ttsEnabled, ttsRate, bargeInEnabled]);
 
-  // 記録（localStorage簡易ログ）
+    const last = messages.at(-1);
+    if(!last || last.role !== "assistant") return;
+
+    if(ttsMode === "browser"){
+      const utt = new SpeechSynthesisUtterance(last.text);
+      utt.lang = "ja-JP";
+      utt.rate = ttsRate;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utt);
+    } else if (ttsMode === "cloud"){
+      (async () => {
+        try{
+          const url = ttsProvider === "elevenlabs" ? "/api/tts/elevenlabs" : "/api/tts/openai";
+          const r = await fetch(url, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify({ text: last.text })
+          });
+          if(!r.ok) return;
+          const blob = await r.blob();
+          const au = new Audio(URL.createObjectURL(blob));
+          au.playbackRate = ttsRate; // クラウド音声でも再生速度はクライアントで変更
+          // かぶせ発話時用に停止できるよう保持
+          if(audioRef.current){ audioRef.current.pause(); }
+          audioRef.current = au;
+          await au.play();
+        }catch{}
+      })();
+    }
+  }, [messages, ttsMode, ttsRate, ttsProvider]);
+
   useEffect(()=>{
     if (typeof window === "undefined") return;
     const store = JSON.parse(localStorage.getItem("moco_sessions") || "[]");
@@ -66,13 +83,12 @@ export default function Home(){
     localStorage.setItem("moco_sessions", JSON.stringify(store.slice(-50)));
   }, [messages]);
 
-  // 音声認識セットアップ
   useEffect(()=>{
     if(!SR) return;
     const rec = new SR();
     rec.lang = "ja-JP";
-    rec.interimResults = true;      // 途中経過を得る
-    rec.continuous = true;          // 継続的に取り続け無音でendにならない端末向け
+    rec.interimResults = true;
+    rec.continuous = true;
 
     rec.onresult = (e) => {
       let finalText = "";
@@ -85,25 +101,25 @@ export default function Home(){
       }
       if (finalText){
         setInput(prev => (prev ? prev + " " : "") + finalText.trim());
-        setInterim(""); // 確定したら消す
-        resetSilenceTimer(); // 無音タイマー再スタート
+        setInterim("");
+        resetSilenceTimer();
       } else {
-        setInterim(interimText);     // 途中経過を表示
+        setInterim(interimText);
       }
     };
     rec.onstart = () => {
       setListening(true);
-      if (bargeInEnabled && typeof window !== "undefined"){
-        window.speechSynthesis.cancel(); // かぶせ発話で読み上げ停止
+      if(bargeInEnabled){
+        window.speechSynthesis?.cancel();
+        if(audioRef.current) audioRef.current.pause();
       }
       resetSilenceTimer();
     };
     rec.onend = () => {
       setListening(false);
-      // 一部ブラウザは自動で止まるので、無音タイマーで送信を評価
       triggerAutoSend();
     };
-    rec.onerror = () => { setListening(false); };
+    rec.onerror = () => setListening(false);
 
     recRef.current = rec;
   }, [bargeInEnabled]);
@@ -149,6 +165,29 @@ export default function Home(){
     }
   }
 
+  async function makeDiaryEntry(){
+    try{
+      const resp = await fetch("/api/diary", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ messages })
+      });
+      const data = await resp.json();
+      const text = data.diary || "(日記を作れなかった…)";
+      // Save to diary store
+      const entry = {
+        id: Date.now(),
+        date: new Date().toISOString().slice(0,10),
+        title: "今日のよかったこと",
+        content: text
+      };
+      const ds = JSON.parse(localStorage.getItem("moco_diary_entries") || "[]");
+      ds.unshift(entry);
+      localStorage.setItem("moco_diary_entries", JSON.stringify(ds.slice(0,500)));
+      window.open("/diary", "_blank");
+    }catch{}
+  }
+
   function onKey(e){
     if(e.key === "Enter" && !e.shiftKey){
       e.preventDefault();
@@ -161,14 +200,16 @@ export default function Home(){
       <header style={styles.header}>
         <img src="/moco.svg" alt="moco" width={36} height={36} />
         <h1 style={{ margin:0, fontSize:22 }}>モコ — お母さん大学 AIコンパニオン</h1>
+        <button onClick={makeDiaryEntry} style={styles.diaryBtn}>📓 日記を作る</button>
       </header>
 
       <Toolbar
         onMicToggle={toggleMic} listening={listening}
-        ttsEnabled={ttsEnabled} setTtsEnabled={setTtsEnabled}
+        ttsMode={ttsMode} setTtsMode={setTtsMode}
         ttsRate={ttsRate} setTtsRate={setTtsRate}
         autoSendDelay={autoSendDelay} setAutoSendDelay={setAutoSendDelay}
         onBargeInToggle={setBargeInEnabled} bargeInEnabled={bargeInEnabled}
+        ttsProvider={ttsProvider} setTtsProvider={setTtsProvider}
       />
 
       <main style={styles.main}>
@@ -191,8 +232,8 @@ export default function Home(){
         <div style={{ display:"flex", gap:10 }}>
           <button onClick={send} disabled={loading} style={styles.sendBtn}>送信</button>
           <button onClick={()=>{
-            // 手動で読み上げ停止
-            if (typeof window !== "undefined") window.speechSynthesis.cancel();
+            window.speechSynthesis?.cancel();
+            if(audioRef.current) audioRef.current.pause();
           }} style={styles.stopBtn}>🔇 停止</button>
         </div>
       </section>
