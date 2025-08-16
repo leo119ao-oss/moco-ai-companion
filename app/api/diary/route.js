@@ -7,10 +7,11 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const messages = Array.isArray(body?.messages) ? body.messages : [];
+    const date = body?.date || new Date().toISOString().slice(0,10);
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      const simple = `# きょうのよかったこと日記\n- たくさん話した：${messages.length}メッセージ\n- 印象に残ったこと：${(messages.at(-1)?.text || "").slice(0, 40)}\n- 自分を労うひとこと：よくがんばったね。`;
-      return NextResponse.json({ diary: simple });
+      const text = `今日の出来事：${(messages.at(-1)?.text || "").slice(0, 30)}\n自分をねぎらう：よくやったね。`;
+      return NextResponse.json({ date, diary: text });
     }
     const client = new OpenAI({ apiKey });
     const res = await client.chat.completions.create({
@@ -22,7 +23,7 @@ export async function POST(req) {
       temperature: 0.5
     });
     const diary = res?.choices?.[0]?.message?.content?.trim() || "（日記を作れなかった…）";
-    return NextResponse.json({ diary });
+    return NextResponse.json({ date, diary });
   } catch (e) {
     console.error("[/api/diary] error:", e);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });

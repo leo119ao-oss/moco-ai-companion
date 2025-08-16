@@ -20,25 +20,16 @@ export default function Toolbar({
               checked={ttsMode==="off"} onChange={()=>setTtsMode("off")} />
             なし
           </label>
-        </div>
-        <div style={styles.row}>
-          <label style={styles.badge}>
-            <input type="radio" name="tts" value="browser"
-              checked={ttsMode==="browser"} onChange={()=>setTtsMode("browser")} />
-            ブラウザ
-          </label>
           <label style={styles.badge}>
             <input type="radio" name="tts" value="cloud"
               checked={ttsMode==="cloud"} onChange={()=>setTtsMode("cloud")} />
             クラウド
           </label>
-          {ttsMode==="cloud" && (
-            <select value={ttsProvider} onChange={e=>setTtsProvider(e.target.value)} style={styles.select}>
-              <option value="auto">Auto (Eleven → OpenAI)</option>
-              <option value="elevenlabs">ElevenLabs</option>
-              <option value="openai">OpenAI</option>
-            </select>
-          )}
+          <select value={ttsProvider} onChange={e=>setTtsProvider(e.target.value)} style={styles.select}>
+            <option value="openai">OpenAI</option>
+            <option value="auto">Auto（Eleven→OpenAI）</option>
+            <option value="elevenlabs">ElevenLabs</option>
+          </select>
         </div>
         <div style={styles.row}>
           <span style={styles.small}>速度</span>
@@ -64,8 +55,6 @@ export default function Toolbar({
           onChange={e=>onBargeInToggle(e.target.checked)} />
         かぶせ発話（話し始めたら読み上げ停止）
       </label>
-
-      <a href="/diary" target="_blank" rel="noreferrer" style={styles.diaryLink}>📓 日記を開く</a>
     </div>
   );
 }
@@ -78,6 +67,5 @@ const styles = {
   row: { display:"flex", alignItems:"center", gap:8, marginTop:4 },
   small: { fontSize:12, color:"#555" },
   badge: { display:"flex", alignItems:"center", gap:6, padding:"2px 8px", border:"1px solid #e0d8cd", borderRadius:8, background:"#fff" },
-  select: { padding:"4px 6px", borderRadius:8, border:"1px solid #ddd" },
-  diaryLink: { marginLeft:"auto", textDecoration:"none", background:"#f4b86a", color:"#2b1900", padding:"6px 10px", borderRadius:10, border:"1px solid #e0a85a", fontWeight:600 }
+  select: { padding:"4px 6px", borderRadius:8, border:"1px solid #ddd" }
 };

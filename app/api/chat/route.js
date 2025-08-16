@@ -12,7 +12,7 @@ export async function POST(req){
     const apiKey = process.env.OPENAI_API_KEY;
     if(!apiKey){
       const last = history.at(-1)?.text ?? "";
-      return NextResponse.json({ reply: `（デモ応答）エコー: ${last}` });
+      return NextResponse.json({ reply: `（デモ応答）${last}` });
     }
     const client = new OpenAI({ apiKey });
     const res = await client.chat.completions.create({
@@ -23,7 +23,7 @@ export async function POST(req){
       ],
       temperature: 0.6
     });
-    const reply = res?.choices?.[0]?.message?.content?.trim() || "（うまく返せなかった…）";
+    const reply = res?.choices?.[0]?.message?.content?.trim() || "うまく返せなかった。";
     return NextResponse.json({ reply });
   }catch(e){
     console.error("[/api/chat] error:", e);

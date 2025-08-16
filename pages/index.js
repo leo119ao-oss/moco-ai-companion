@@ -8,14 +8,11 @@ function Bubble({ role, text }){
   const isUser = role === "user";
   return (
     <div style={{ display:"flex", gap:10, alignItems:"flex-start", margin:"8px 0" }}>
-      {!isUser && <img src="/moco.svg" alt="moco" width={36} height={36} />}
+      {!isUser && <img src="/moco.svg" alt="moco" width={32} height={32} />}
       <div style={{
         background: isUser ? "#d9ecff" : "#fff",
-        border: "1px solid #ececec",
-        padding: "10px 12px",
-        borderRadius: 16,
-        maxWidth: "72%",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+        border: "1px solid #ececec", padding: "10px 12px",
+        borderRadius: 16, maxWidth: "85%"
       }}>
         <pre style={{ whiteSpace:"pre-wrap", margin:0, fontFamily:"inherit" }}>{text}</pre>
       </div>
@@ -23,38 +20,82 @@ function Bubble({ role, text }){
   );
 }
 
+function Calendar({ entriesByDate, value, onChange }){
+  const [cursor, setCursor] = useState(value ? new Date(value) : new Date());
+  const y = cursor.getFullYear();
+  const m = cursor.getMonth(); // 0-based
+  const first = new Date(y, m, 1);
+  const startDay = first.getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const todayIso = new Date().toISOString().slice(0,10);
+
+  const cells = [];
+  for(let i=0;i<startDay;i++) cells.push(null);
+  for(let d=1; d<=daysInMonth; d++) cells.push(new Date(y,m,d));
+
+  function iso(d){ return d.toISOString().slice(0,10); }
+
+  return (
+    <div>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+        <button onClick={()=>setCursor(new Date(y, m-1, 1))}>‹</button>
+        <div style={{ fontWeight:700 }}>{y}年 {m+1}月</div>
+        <button onClick={()=>setCursor(new Date(y, m+1, 1))}>›</button>
+      </div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6, fontSize:12 }}>
+        {["日","月","火","水","木","金","土"].map(w => <div key={w} style={{textAlign:"center", color:"#777"}}>{w}</div>)}
+        {cells.map((d,i)=>{
+          if(!d) return <div key={"e"+i}/>;
+          const k = iso(d);
+          const has = !!entriesByDate[k];
+          const isToday = k === todayIso;
+          const isSelected = k === value;
+          return (
+            <button key={k} onClick={()=>onChange(k)} style={{
+              padding:"6px 4px", minHeight:40, borderRadius:10, border: isSelected ? "2px solid #5596ff":"1px solid #e6e2db",
+              background: isSelected ? "#eef4ff" : "#fff", position:"relative"
+            }}>
+              <div style={{fontSize:12, textAlign:"right"}}>{d.getDate()}</div>
+              {has && <div style={{ position:"absolute", left:6, bottom:6, width:6, height:6, borderRadius:6, background:"#f4b86a"}}/>}
+              {isToday && <div style={{ position:"absolute", right:6, bottom:6, width:6, height:6, borderRadius:6, background:"#6abf4b"}}/>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Home(){
-  const [messages, setMessages] = useState([
-    { role: "assistant", text: "こんにちは、私はモコ。何でも話してね。"}
-  ]);
+  // Chat state
+  const [messages, setMessages] = useState([{ role: "assistant", text: "こんにちは。今日はどうする？" }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [interim, setInterim] = useState("");
   const [listening, setListening] = useState(false);
-  const [ttsMode, setTtsMode] = useState("off"); // off | browser | cloud
+
+  // Voice defaults: TTS ON (cloud/openai), SR ON, autosend 3s
+  const [ttsMode, setTtsMode] = useState("cloud");
   const [ttsRate, setTtsRate] = useState(1.4);
-  const [ttsProvider, setTtsProvider] = useState("auto"); // auto | elevenlabs | openai
+  const [ttsProvider, setTtsProvider] = useState("openai");
   const [autoSendDelay, setAutoSendDelay] = useState(3);
   const [bargeInEnabled, setBargeInEnabled] = useState(true);
 
-  const bottomRef = useRef(null);
   const recRef = useRef(null);
   const silenceTimerRef = useRef(null);
   const audioRef = useRef(null);
+  const bottomRef = useRef(null);
 
+  // Diary state
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10));
+  const [entriesByDate, setEntriesByDate] = useState({}); // { 'YYYY-MM-DD': { title, content } }
+  const currentEntry = entriesByDate[selectedDate] || { title: "無題の日記", content: "" };
+
+  // --- TTS playback on assistant message ---
   useEffect(()=>{
-    bottomRef.current?.scrollIntoView({ behavior:"smooth" });
-
     const last = messages.at(-1);
     if(!last || last.role !== "assistant") return;
-
-    if(ttsMode === "browser"){
-      const utt = new SpeechSynthesisUtterance(last.text);
-      utt.lang = "ja-JP";
-      utt.rate = ttsRate;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utt);
-    } else if (ttsMode === "cloud"){
+    if(ttsMode === "cloud"){
       (async () => {
         try{
           const r = await fetch("/api/tts", {
@@ -66,184 +107,193 @@ export default function Home(){
           const blob = await r.blob();
           const au = new Audio(URL.createObjectURL(blob));
           au.playbackRate = ttsRate;
-          if(audioRef.current){ audioRef.current.pause(); }
+          if(audioRef.current) audioRef.current.pause();
           audioRef.current = au;
           await au.play();
         }catch{}
       })();
+    } else if (ttsMode === "off"){
+      // do nothing
     }
+    bottomRef.current?.scrollIntoView({ behavior:"smooth" });
   }, [messages, ttsMode, ttsRate, ttsProvider]);
 
+  // --- Persist chat ---
   useEffect(()=>{
-    if (typeof window === "undefined") return;
     const store = JSON.parse(localStorage.getItem("moco_sessions") || "[]");
     store.push({ t: Date.now(), messages });
     localStorage.setItem("moco_sessions", JSON.stringify(store.slice(-50)));
   }, [messages]);
 
+  // --- Initialize SR & auto start ---
   useEffect(()=>{
     if(!SR) return;
     const rec = new SR();
-    rec.lang = "ja-JP";
-    rec.interimResults = true;
-    rec.continuous = true;
+    rec.lang = "ja-JP"; rec.interimResults = true; rec.continuous = true;
 
     rec.onresult = (e) => {
-      let finalText = "";
-      let interimText = "";
-      for (let i = e.resultIndex; i < e.results.length; i++){
-        const r = e.results[i];
-        const txt = r[0].transcript;
-        if (r.isFinal) finalText += txt;
-        else interimText += txt;
+      let finalText = "", interimText = "";
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const r = e.results[i]; const txt = r[0].transcript;
+        if (r.isFinal) finalText += txt; else interimText += txt;
       }
       if (finalText){
         setInput(prev => (prev ? prev + " " : "") + finalText.trim());
-        setInterim("");
-        resetSilenceTimer();
-      } else {
-        setInterim(interimText);
-      }
+        setInterim(""); resetSilenceTimer();
+      } else { setInterim(interimText); }
     };
     rec.onstart = () => {
       setListening(true);
-      if(bargeInEnabled){
-        window.speechSynthesis?.cancel();
-        if(audioRef.current) audioRef.current.pause();
-      }
+      if(bargeInEnabled){ if(audioRef.current) audioRef.current.pause(); }
       resetSilenceTimer();
     };
-    rec.onend = () => {
-      setListening(false);
-      triggerAutoSend();
-    };
+    rec.onend = () => { setListening(false); triggerAutoSend(); };
     rec.onerror = () => setListening(false);
 
     recRef.current = rec;
+    rec.start(); // デフォルトでON
   }, [bargeInEnabled]);
 
   function resetSilenceTimer(){
     clearTimeout(silenceTimerRef.current);
-    silenceTimerRef.current = setTimeout(()=>{
-      triggerAutoSend();
-    }, autoSendDelay * 1000);
+    silenceTimerRef.current = setTimeout(()=>{ triggerAutoSend(); }, autoSendDelay * 1000);
   }
-
   async function triggerAutoSend(){
     clearTimeout(silenceTimerRef.current);
     if (!input.trim()) return;
     await send();
   }
-
   function toggleMic(){
     if(!recRef.current){ alert("このブラウザは音声入力に未対応です（Chrome推奨）"); return; }
-    if(listening){ recRef.current.stop(); setListening(false); }
-    else{ recRef.current.start(); }
+    if(listening){ recRef.current.stop(); } else { recRef.current.start(); }
   }
 
   async function send(){
     const text = input.trim();
     if(!text || loading) return;
-    setInput("");
+    setInput(""); setInterim("");
     const next = [...messages, { role: "user", text }];
-    setMessages(next);
-    setLoading(true);
+    setMessages(next); setLoading(true);
     try{
       const resp = await fetch("/api/chat", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
+        method:"POST", headers:{ "Content-Type":"application/json" },
         body: JSON.stringify({ messages: next.slice(-12) })
       });
       const data = await resp.json();
-      setMessages(m => [...m, { role:"assistant", text: data.reply || "(応答なし)" }]);
+      setMessages(m => [...m, { role:"assistant", text: data.reply || "…" }]);
     }catch{
-      setMessages(m => [...m, { role:"assistant", text:"サーバーエラーが出たかも…もう一度試してね。" }]);
-    }finally{
-      setLoading(false);
-    }
+      setMessages(m => [...m, { role:"assistant", text:"サーバーエラーかも。もう一度試してね。" }]);
+    }finally{ setLoading(false); }
   }
 
-  async function makeDiaryEntry(){
+  // --- Diary helpers (same page) ---
+  useEffect(()=>{
+    const saved = JSON.parse(localStorage.getItem("moco_diary_map") || "{}");
+    setEntriesByDate(saved);
+  }, []);
+  function saveDiaryMap(next){
+    setEntriesByDate(next);
+    localStorage.setItem("moco_diary_map", JSON.stringify(next));
+  }
+  function updateCurrentEntry(fields){
+    const next = { ...entriesByDate, [selectedDate]: { ...currentEntry, ...fields } };
+    saveDiaryMap(next);
+  }
+  async function autoWriteDiary(){
     try{
       const resp = await fetch("/api/diary", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({ messages })
+        method:"POST", headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({ messages, date: selectedDate })
       });
       const data = await resp.json();
-      const text = data.diary || "(日記を作れなかった…)";
-      const entry = {
-        id: Date.now(),
-        date: new Date().toISOString().slice(0,10),
-        title: "今日のよかったこと",
-        content: text
-      };
-      const ds = JSON.parse(localStorage.getItem("moco_diary_entries") || "[]");
-      ds.unshift(entry);
-      localStorage.setItem("moco_diary_entries", JSON.stringify(ds.slice(0,500)));
-      window.open("/diary", "_blank");
+      updateCurrentEntry({ title: "今日のよかったこと", content: data.diary || "" });
     }catch{}
   }
 
   function onKey(e){
     if(e.key === "Enter" && !e.shiftKey){
-      e.preventDefault();
-      send();
+      e.preventDefault(); send();
     }
   }
 
   return (
     <div style={styles.page}>
-      <header style={styles.header}>
-        <img src="/moco.svg" alt="moco" width={36} height={36} />
-        <h1 style={{ margin:0, fontSize:22 }}>モコ — お母さん大学 AIコンパニオン</h1>
-        <button onClick={makeDiaryEntry} style={styles.diaryBtn}>📓 日記を作る</button>
-      </header>
+      <h1 style={{ margin:"6px 0 12px" }}>モコ — お母さん大学 AIコンパニオン</h1>
 
       <Toolbar
         onMicToggle={toggleMic} listening={listening}
         ttsMode={ttsMode} setTtsMode={setTtsMode}
         ttsRate={ttsRate} setTtsRate={setTtsRate}
         autoSendDelay={autoSendDelay} setAutoSendDelay={setAutoSendDelay}
-        onBargeInToggle={setBargeInEnabled} bargeInEnabled={bargeInEnabled}
+        onBargeInToggle={()=>setBargeInEnabled(v=>!v)} bargeInEnabled={bargeInEnabled}
         ttsProvider={ttsProvider} setTtsProvider={setTtsProvider}
       />
 
-      <main style={styles.main}>
-        {messages.map((m, i) => <Bubble key={i} role={m.role} text={m.text} />)}
-        {!!interim && (
-          <div style={{ opacity:.7, fontStyle:"italic", margin:"6px 0 10px 46px" }}>…{interim}</div>
-        )}
-        {loading && <div style={{ fontSize:12, color:"#777", marginLeft:46 }}>送信中…</div>}
-        <div ref={bottomRef} />
-      </main>
+      <div style={styles.columns}>
+        {/* Chat pane */}
+        <div style={styles.colLeft}>
+          <div style={styles.chat}>
+            {messages.map((m, i) => <Bubble key={i} role={m.role} text={m.text} />)}
+            {!!interim && <div style={{ opacity:.7, fontStyle:"italic", marginLeft:42 }}>…{interim}</div>}
+            {loading && <div style={{ fontSize:12, color:"#777", marginLeft:42 }}>送信中…</div>}
+            <div ref={bottomRef} />
+          </div>
 
-      <section style={styles.inputArea}>
-        <textarea
-          value={input}
-          onChange={(e)=>setInput(e.target.value)}
-          onKeyDown={onKey}
-          placeholder="話しかけてみて…（Enterで送信/改行はShift+Enter）"
-          style={styles.textarea}
-        />
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={send} disabled={loading} style={styles.sendBtn}>送信</button>
-          <button onClick={()=>{
-            window.speechSynthesis?.cancel();
-            if(audioRef.current) audioRef.current.pause();
-          }} style={styles.stopBtn}>🔇 停止</button>
+          <div style={styles.compose}>
+            <textarea
+              value={input} onChange={(e)=>setInput(e.target.value)} onKeyDown={onKey}
+              placeholder="話しかけてみて…（Enterで送信 / 改行は Shift+Enter）"
+              style={styles.textarea}
+            />
+            <div style={{ display:"flex", gap:10 }}>
+              <button onClick={send} disabled={loading} style={styles.sendBtn}>送信</button>
+              <button onClick={()=>{ if(audioRef.current) audioRef.current.pause(); }} style={styles.stopBtn}>🔇 停止</button>
+            </div>
+          </div>
         </div>
-      </section>
+
+        {/* Diary pane */}
+        <div style={styles.colRight}>
+          <Calendar entriesByDate={entriesByDate} value={selectedDate} onChange={setSelectedDate} />
+          <div style={styles.diaryCard}>
+            <input
+              value={currentEntry.title} onChange={(e)=>updateCurrentEntry({ title:e.target.value })}
+              style={styles.diaryTitle}
+            />
+            <textarea
+              value={currentEntry.content}
+              onChange={(e)=>updateCurrentEntry({ content:e.target.value })}
+              style={styles.diaryText}
+            />
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={autoWriteDiary} style={styles.btnPrimary}>会話から作成</button>
+              <button onClick={()=>{
+                const blob = new Blob([JSON.stringify(entriesByDate, null, 2)], { type:"application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href = url; a.download = "moco-diary.json"; a.click();
+                URL.revokeObjectURL(url);
+              }} style={styles.btn}>エクスポート</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 const styles = {
-  page: { maxWidth: 900, margin:"24px auto", padding:"12px 12px 40px", fontFamily:"system-ui,-apple-system,Segoe UI", background:"#fffdf9" },
-  header:{ display:"flex", alignItems:"center", gap:10, marginBottom:10 },
-  main: { border:"1px solid #ecdcc6", background:"#fffaf2", padding:"14px", borderRadius:16, height:"58vh", overflow:"auto", boxShadow:"inset 0 0 20px rgba(229,214,188,.25)" },
-  inputArea: { marginTop:12, display:"flex", gap:10, alignItems:"flex-end" },
+  page: { maxWidth: 1100, margin:"20px auto", padding:"12px 12px 24px", fontFamily:"system-ui,-apple-system,Segoe UI", background:"#fffdf9" },
+  columns: { display:"grid", gridTemplateColumns:"1.3fr 1fr", gap:14 },
+  colLeft: { display:"flex", flexDirection:"column", gap:8 },
+  colRight: { display:"flex", flexDirection:"column", gap:8 },
+  chat: { border:"1px solid #ecdcc6", background:"#fffaf2", padding:"12px", borderRadius:16, height:"58vh", overflow:"auto" },
+  compose: { display:"flex", gap:10, alignItems:"flex-end", marginTop:6 },
   textarea: { flex:1, height:110, padding:10, borderRadius:12, border:"1px solid #e5d6bc", background:"#fffef9" },
   sendBtn: { padding:"10px 16px", background:"#f4b86a", color:"#2b1900", border:"1px solid #e0a85a", borderRadius:12, fontWeight:600 },
-  stopBtn: { padding:"10px 12px", background:"#eee", border:"1px solid #ddd", borderRadius:12 }
+  stopBtn: { padding:"10px 12px", background:"#eee", border:"1px solid #ddd", borderRadius:12 },
+  diaryCard:{ border:"1px solid #ecdcc6", background:"#fff", padding:12, borderRadius:12 },
+  diaryTitle:{ width:"100%", fontWeight:700, fontSize:16, border:"1px solid #eee", borderRadius:8, padding:"6px 8px", marginBottom:8 },
+  diaryText:{ width:"100%", height:220, border:"1px solid #e5d6bc", background:"#fffef9", borderRadius:10, padding:10 },
+  btn:{ padding:"6px 10px", border:"1px solid #ddd", borderRadius:10, background:"#fff" },
+  btnPrimary:{ padding:"6px 10px", border:"1px solid #e0a85a", borderRadius:10, background:"#f4b86a", color:"#2b1900", fontWeight:600 }
 };

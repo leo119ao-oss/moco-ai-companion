@@ -4,5 +4,4 @@
   <circle cx="128" cy="120" r="60" fill="#fff4e3" stroke="#e3bf86" stroke-width="4"/>
   <circle cx="108" cy="115" r="6" fill="#6b4a2b"/><circle cx="148" cy="115" r="6" fill="#6b4a2b"/>
   <path d="M96 145 q32 18 64 0" fill="none" stroke="#6b4a2b" stroke-width="5" stroke-linecap="round"/>
-  <path d="M64 196 q64 24 128 0" fill="none" stroke="#e3bf86" stroke-width="8" stroke-linecap="round"/>
 </svg>
