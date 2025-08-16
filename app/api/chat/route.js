@@ -1,56 +1,38 @@
+// app/api/chat/route.js
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import { SYSTEM_PROMPT } from "../../lib/prompt";
 
-/**
- * Health check
- */
 export async function GET() {
   return NextResponse.json({ ok: true });
 }
 
-/**
- * Chat endpoint
- * Accepts: { text: string }
- * Returns: { reply: string }
- */
 export async function POST(req) {
   try {
-    const { text } = await req.json().catch(() => ({}));
-    if (!text || typeof text !== "string") {
-      return NextResponse.json({ error: "Missing 'text'" }, { status: 400 });
-    }
-
-    // If no API key is set, gracefully fall back to echo so it "just works".
+    const body = await req.json().catch(() => ({}));
+    const history = Array.isArray(body?.messages) ? body.messages : [];
     const apiKey = process.env.OPENAI_API_KEY;
+
+    // graceful fallback when no key
     if (!apiKey) {
-      return NextResponse.json({ reply: `（デモ応答）エコー: ${text}` });
+      const last = history.at(-1)?.text ?? "";
+      return NextResponse.json({ reply: `（デモ応答）エコー: ${last}` });
     }
 
     const client = new OpenAI({ apiKey });
+    const res = await client.chat.completions.create({
+      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...history.map(m => ({ role: m.role, content: m.text })),
+      ],
+      temperature: 0.6,
+    });
 
-    try {
-      const res = await client.chat.completions.create({
-        model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "あなたは優しくフレンドリーなアシスタントです。50文字程度の簡潔な日本語で答えてください。" },
-          { role: "user", content: text }
-        ],
-        temperature: 0.7
-      });
-
-      const reply = res?.choices?.[0]?.message?.content || "";
-      if (!reply) {
-        // If something odd happened, degrade gracefully.
-        return NextResponse.json({ reply: `（エコー）${text}` });
-      }
-      return NextResponse.json({ reply });
-    } catch (innerErr) {
-      console.error("[/api/chat] openai error:", innerErr);
-      // Fall back instead of 500 so the app keeps working.
-      return NextResponse.json({ reply: `（一時的なエラーのためエコー）${text}` });
-    }
-  } catch (err) {
-    console.error("[/api/chat] fatal error:", err);
+    const reply = res?.choices?.[0]?.message?.content?.trim() || "（うまく返せなかった…）";
+    return NextResponse.json({ reply });
+  } catch (e) {
+    console.error("[/api/chat] error:", e);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

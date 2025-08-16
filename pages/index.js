@@ -1,3 +1,4 @@
+// pages/index.js
 import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
@@ -16,28 +17,19 @@ export default function Home() {
     const text = input.trim();
     if (!text || loading) return;
     setInput("");
-    setMessages(m => [...m, { role: "user", text }]);
+    const nextMessages = [...messages, { role: "user", text }];
+    setMessages(nextMessages);
     setLoading(true);
     try {
       const resp = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text })
+        body: JSON.stringify({ messages: nextMessages.slice(-12) }),
       });
-      // Try to parse JSON safely
-      let data = {};
-      try {
-        data = await resp.json();
-      } catch {
-        // ignore
-      }
-      const reply = data?.reply ?? "(応答なし)";
-      setMessages(m => [...m, { role: "assistant", text: reply }]);
+      const data = await resp.json();
+      setMessages(m => [...m, { role: "assistant", text: data.reply || "(応答なし)" }]);
     } catch (e) {
-      setMessages(m => [
-        ...m,
-        { role: "assistant", text: "サーバーエラーが出たかも…もう一度試してね。" }
-      ]);
+      setMessages(m => [...m, { role: "assistant", text: "サーバーエラーが出たかも…もう一度試してね。" }]);
     } finally {
       setLoading(false);
     }
