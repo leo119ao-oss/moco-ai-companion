@@ -27,11 +27,9 @@ export default function Toolbar({
             <option value="elevenlabs">ElevenLabs</option>
           </select>
           <select value={voice} onChange={e=>setVoice(e.target.value)} style={styles.select}>
-            {/* OpenAI */}
             <option value="alloy">OpenAI: 男性・ニュートラル</option>
             <option value="aria">OpenAI: 女性・やわらかめ</option>
             <option value="verse">OpenAI: 若め・明るい</option>
-            {/* ElevenLabs */}
             <option value="rachel">11Labs: 女性・やさしい</option>
             <option value="adam">11Labs: 男性・若め</option>
             <option value="bella">11Labs: 女性・明るい</option>

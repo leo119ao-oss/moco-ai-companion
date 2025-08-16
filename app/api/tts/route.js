@@ -2,19 +2,11 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-/**
- * POST /api/tts
- * body: { text: string, provider?: 'openai'|'elevenlabs'|'auto', voice?: string }
- * voice examples:
- *   openai: 'alloy'|'verse'|'aria'|'sage' など（存在しない値でもAPI側でfallback）
- *   elevenlabs: 'rachel'|'adam'|'bella'|'antoni'（→Voice IDへマップ）
- */
 export async function POST(req){
   try{
     const { text, provider = 'openai', voice = 'alloy' } = await req.json();
-    if(!text) return new NextResponse("Missing text", { status:400 });
+    if(!text) return new NextResponse("Missing text", { status:400, headers:{ "Cache-Control":"no-store" } });
 
-    // ElevenLabs voice id map（よく使われるプリセット）
     const elevenMap = {
       rachel: "21m00Tcm4TlvDq8ikWAM",
       adam: "pNInz6obpgDQGcFmaJgB",
@@ -53,17 +45,12 @@ export async function POST(req){
     };
 
     let buf;
-    if(provider === 'elevenlabs'){
-      buf = await tryEleven();
-    } else if (provider === 'openai'){
-      buf = await tryOpenAI();
-    } else { // auto
-      try { buf = await tryEleven(); } catch { buf = await tryOpenAI(); }
-    }
+    if(provider === 'elevenlabs'){ buf = await tryEleven(); }
+    else if(provider === 'openai'){ buf = await tryOpenAI(); }
+    else { try{ buf = await tryEleven(); }catch{ buf = await tryOpenAI(); } }
 
     return new NextResponse(buf, { status:200, headers:{ "Content-Type":"audio/mpeg", "Cache-Control":"no-store" }});
   }catch(e){
-    console.error("[/api/tts] error:", e);
-    return new NextResponse("Server Error", { status:500 });
+    return new NextResponse("Server Error", { status:500, headers:{ "Cache-Control":"no-store" } });
   }
 }
