@@ -1,15 +1,22 @@
-import OpenAI from "openai";
+// app/api/chat/route.js
 
+// POST: チャットリクエストを受け取る
 export async function POST(req) {
-  const body = await req.json();
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  try {
+    const { text } = await req.json().catch(() => ({}));
+    if (!text) {
+      return new Response("Missing text", { status: 400 });
+    }
 
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: body.message }],
-  });
+    // とりあえずエコーで返す（OpenAI呼び出しは後で）
+    return Response.json({ reply: `エコー: ${text}` });
+  } catch (e) {
+    console.error(e);
+    return new Response("Server Error", { status: 500 });
+  }
+}
 
-  return new Response(JSON.stringify({ reply: completion.choices[0].message.content }), {
-    headers: { "Content-Type": "application/json" },
-  });
+// GET: 動作確認用エンドポイント
+export async function GET() {
+  return Response.json({ ok: true });
 }
