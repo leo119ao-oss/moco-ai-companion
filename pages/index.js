@@ -33,7 +33,7 @@ export default function Home(){
   const [listening, setListening] = useState(false);
   const [ttsMode, setTtsMode] = useState("off"); // off | browser | cloud
   const [ttsRate, setTtsRate] = useState(1.4);
-  const [ttsProvider, setTtsProvider] = useState("openai");
+  const [ttsProvider, setTtsProvider] = useState("auto"); // auto | elevenlabs | openai
   const [autoSendDelay, setAutoSendDelay] = useState(3);
   const [bargeInEnabled, setBargeInEnabled] = useState(true);
 
@@ -57,17 +57,15 @@ export default function Home(){
     } else if (ttsMode === "cloud"){
       (async () => {
         try{
-          const url = ttsProvider === "elevenlabs" ? "/api/tts/elevenlabs" : "/api/tts/openai";
-          const r = await fetch(url, {
+          const r = await fetch("/api/tts", {
             method:"POST",
             headers:{ "Content-Type":"application/json" },
-            body: JSON.stringify({ text: last.text })
+            body: JSON.stringify({ text: last.text, provider: ttsProvider })
           });
           if(!r.ok) return;
           const blob = await r.blob();
           const au = new Audio(URL.createObjectURL(blob));
-          au.playbackRate = ttsRate; // クラウド音声でも再生速度はクライアントで変更
-          // かぶせ発話時用に停止できるよう保持
+          au.playbackRate = ttsRate;
           if(audioRef.current){ audioRef.current.pause(); }
           audioRef.current = au;
           await au.play();
@@ -174,7 +172,6 @@ export default function Home(){
       });
       const data = await resp.json();
       const text = data.diary || "(日記を作れなかった…)";
-      // Save to diary store
       const entry = {
         id: Date.now(),
         date: new Date().toISOString().slice(0,10),

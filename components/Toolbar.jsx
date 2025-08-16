@@ -20,6 +20,8 @@ export default function Toolbar({
               checked={ttsMode==="off"} onChange={()=>setTtsMode("off")} />
             なし
           </label>
+        </div>
+        <div style={styles.row}>
           <label style={styles.badge}>
             <input type="radio" name="tts" value="browser"
               checked={ttsMode==="browser"} onChange={()=>setTtsMode("browser")} />
@@ -32,8 +34,9 @@ export default function Toolbar({
           </label>
           {ttsMode==="cloud" && (
             <select value={ttsProvider} onChange={e=>setTtsProvider(e.target.value)} style={styles.select}>
-              <option value="openai">OpenAI</option>
+              <option value="auto">Auto (Eleven → OpenAI)</option>
               <option value="elevenlabs">ElevenLabs</option>
+              <option value="openai">OpenAI</option>
             </select>
           )}
         </div>
