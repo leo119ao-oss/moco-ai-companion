@@ -4,7 +4,8 @@ export default function Toolbar({
   ttsMode, setTtsMode, ttsRate, setTtsRate,
   autoSendDelay, setAutoSendDelay,
   onBargeInToggle, bargeInEnabled,
-  ttsProvider, setTtsProvider
+  ttsProvider, setTtsProvider,
+  voice, setVoice
 }){
   return (
     <div style={styles.wrap}>
@@ -16,11 +17,6 @@ export default function Toolbar({
         <div style={styles.label}>読み上げ</div>
         <div style={styles.row}>
           <label style={styles.badge}>
-            <input type="radio" name="tts" value="off"
-              checked={ttsMode==="off"} onChange={()=>setTtsMode("off")} />
-            なし
-          </label>
-          <label style={styles.badge}>
             <input type="radio" name="tts" value="cloud"
               checked={ttsMode==="cloud"} onChange={()=>setTtsMode("cloud")} />
             クラウド
@@ -29,6 +25,18 @@ export default function Toolbar({
             <option value="openai">OpenAI</option>
             <option value="auto">Auto（Eleven→OpenAI）</option>
             <option value="elevenlabs">ElevenLabs</option>
+          </select>
+          <select value={voice} onChange={e=>setVoice(e.target.value)} style={styles.select}>
+            {/* OpenAI */}
+            <option value="alloy">OpenAI: 男性・ニュートラル</option>
+            <option value="aria">OpenAI: 女性・やわらかめ</option>
+            <option value="verse">OpenAI: 若め・明るい</option>
+            {/* ElevenLabs */}
+            <option value="rachel">11Labs: 女性・やさしい</option>
+            <option value="adam">11Labs: 男性・若め</option>
+            <option value="bella">11Labs: 女性・明るい</option>
+            <option value="antoni">11Labs: 男性・渋め</option>
+            <option value="ellie">11Labs: 女性・落ち着き</option>
           </select>
         </div>
         <div style={styles.row}>
