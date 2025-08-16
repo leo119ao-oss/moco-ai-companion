@@ -13,29 +13,22 @@ export default function Home() {
   }, [messages]);
 
   async function send() {
-    if (!input.trim() || loading) return;
-    const userMsg = { role: "user", text: input.trim() };
-    setMessages((m) => [...m, userMsg]);
-    setInput("");
-    setLoading(true);
-    try {
-      const resp = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMsg] }),
-      });
-      const data = await resp.json();
-      setMessages((m) => [...m, { role: "assistant", text: data.reply || "（応答なし）" }]);
-    } catch (e) {
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: "サーバーエラーが出たかも…もう一度試してね。" },
-      ]);
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+  setLoading(true);
+  try {
+    const resp = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }, // これ重要！
+      body: JSON.stringify({ text: inputValue })       // サーバが待つキー名と合わせる
+    });
+    const data = await resp.json();
+    setMessages(m => [...m, { role: "assistant", text: data.reply || "(応答なし)" }]);
+  } catch (e) {
+    setMessages(m => [...m, { role: "assistant", text: "サーバーエラーが出たかも…もう一度試してね。" }]);
+  } finally {
+    setLoading(false);
   }
+}
+
 
   const onKey = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
